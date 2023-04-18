@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use ethportal_api::jsonrpsee::server::ServerHandle;
+use portalnet::discovery::DiscRecv;
 use rpc::JsonRpcServer;
 use tokio::sync::mpsc;
 use tokio::sync::RwLock;
@@ -43,7 +44,10 @@ pub async fn run_trin(
 
     // Initialize base discovery protocol
     let mut discovery = Discovery::new(portalnet_config.clone())?;
-    let talk_req_rx = discovery.start().await?;
+    let DiscRecv {
+        talk_req_rx,
+        tunnel_rx,
+    } = discovery.start().await?;
     let discovery = Arc::new(discovery);
 
     // Initialize prometheus metrics

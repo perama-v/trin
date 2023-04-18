@@ -8,7 +8,7 @@ use discv5::TalkRequest;
 use jsonrpsee::core::{async_trait, RpcResult};
 use jsonrpsee::http_server::{HttpServerBuilder, HttpServerHandle};
 use jsonrpsee::proc_macros::rpc;
-use portalnet::discovery::{Discovery, UtpEnr};
+use portalnet::discovery::{DiscRecv, Discovery, UtpEnr};
 use portalnet::types::messages::{PortalnetConfig, ProtocolId};
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -149,7 +149,10 @@ pub async fn run_test_app(
     };
 
     let mut discovery = Discovery::new(config).unwrap();
-    let talk_req_rx = discovery.start().await.unwrap();
+    let DiscRecv {
+        talk_req_rx,
+        tunnel_rx,
+    } = discovery.start().await.unwrap();
     let enr = discovery.local_enr();
     let discovery = Arc::new(discovery);
 

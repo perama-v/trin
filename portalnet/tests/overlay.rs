@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, str::FromStr, sync::Arc};
 
 use portalnet::{
-    discovery::{Discovery, Discv5UdpSocket},
+    discovery::{DiscRecv, Discovery, Discv5UdpSocket},
     overlay::{OverlayConfig, OverlayProtocol},
     socket,
     storage::{ContentStore, DistanceFunction, MemoryContentStore},
@@ -103,7 +103,10 @@ async fn overlay() {
         ..PortalnetConfig::default()
     };
     let mut discovery_one = Discovery::new(portal_config_one).unwrap();
-    let talk_req_rx_one = discovery_one.start().await.unwrap();
+    let DiscRecv {
+        talk_req_rx: talk_req_rx_one,
+        tunnel_rx: tunnel_rx_one,
+    } = discovery_one.start().await.unwrap();
     let discovery_one = Arc::new(discovery_one);
     let overlay_one = Arc::new(init_overlay(Arc::clone(&discovery_one), protocol.clone()).await);
     spawn_overlay(talk_req_rx_one, Arc::clone(&overlay_one)).await;
@@ -116,7 +119,10 @@ async fn overlay() {
         ..PortalnetConfig::default()
     };
     let mut discovery_two = Discovery::new(portal_config_two).unwrap();
-    let talk_req_rx_two = discovery_two.start().await.unwrap();
+    let DiscRecv {
+        talk_req_rx: talk_req_rx_two,
+        tunnel_rx: tunnel_rx_two,
+    } = discovery_two.start().await.unwrap();
     let discovery_two = Arc::new(discovery_two);
     let overlay_two = Arc::new(init_overlay(Arc::clone(&discovery_two), protocol.clone()).await);
     spawn_overlay(talk_req_rx_two, Arc::clone(&overlay_two)).await;
@@ -129,7 +135,10 @@ async fn overlay() {
         ..PortalnetConfig::default()
     };
     let mut discovery_three = Discovery::new(portal_config_three).unwrap();
-    let talk_req_rx_three = discovery_three.start().await.unwrap();
+    let DiscRecv {
+        talk_req_rx: talk_req_rx_three,
+        tunnel_rx: tunnel_rx_three,
+    } = discovery_three.start().await.unwrap();
     let discovery_three = Arc::new(discovery_three);
     let overlay_three =
         Arc::new(init_overlay(Arc::clone(&discovery_three), protocol.clone()).await);

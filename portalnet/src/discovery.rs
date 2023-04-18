@@ -2,7 +2,8 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use discv5::{
     enr::{CombinedKey, EnrBuilder, NodeId},
-    Discv5, Discv5Config, Discv5ConfigBuilder, Discv5Event, RequestError, TalkRequest,
+    Discv5, Discv5Config, Discv5ConfigBuilder, Discv5Event, InboundTunnelPacket, RequestError,
+    TalkRequest,
 };
 use ethereum_types::H256;
 use lru::LruCache;
@@ -29,6 +30,8 @@ use trin_utils::version::get_trin_version;
 
 /// Size of the buffer of the Discv5 TALKREQ channel.
 const TALKREQ_CHANNEL_BUFFER: usize = 100;
+/// Size of the buffer of the Discv5 Tunnel channel.
+const TUNNEL_CHANNEL_BUFFER: usize = 100; // TODO determine appropriate size.
 
 /// ENR key for portal network client version.
 const ENR_PORTAL_CLIENT_KEY: &str = "c";
@@ -75,6 +78,12 @@ pub struct Discovery {
     pub started: bool,
     /// The socket address that the Discv5 service listens on.
     pub listen_socket: SocketAddr,
+}
+
+/// Receiver channels for Discv5 listeners.
+pub struct DiscRecv {
+    pub talk_req_rx: mpsc::Receiver<TalkRequest>,
+    pub tunnel_rx: mpsc::Receiver<InboundTunnelPacket>,
 }
 
 impl fmt::Debug for Discovery {
@@ -163,7 +172,7 @@ impl Discovery {
         })
     }
 
-    pub async fn start(&mut self) -> Result<mpsc::Receiver<TalkRequest>, String> {
+    pub async fn start(&mut self) -> Result<DiscRecv, String> {
         info!(
             enr.encoded = ?self.local_enr(),
             enr.decoded = %self.local_enr(),
@@ -183,6 +192,7 @@ impl Discovery {
             .map_err(|e| format!("When launching event stream in new discv5: {e:?}"))?;
 
         let (talk_req_tx, talk_req_rx) = mpsc::channel(TALKREQ_CHANNEL_BUFFER);
+        let (tunnel_tx, tunnel_rx) = mpsc::channel(TUNNEL_CHANNEL_BUFFER);
 
         let node_addr_cache = Arc::clone(&self.node_addr_cache);
 
@@ -210,12 +220,37 @@ impl Discovery {
                             tracing::debug!(addr = ?(enr, socket_addr), "node address cached");
                         }
                     }
-                    _ => continue,
+                    Discv5Event::Discovered(_) => {
+                        debug!("a new node was discovered via FINDNODES");
+                    }
+                    Discv5Event::EnrAdded {
+                        enr: _,
+                        replaced: _,
+                    } => {
+                        debug!("a new ENR was added to the routing table");
+                    }
+                    Discv5Event::NodeInserted {
+                        node_id: _,
+                        replaced: _,
+                    } => {
+                        debug!("a new node was added to the routing table");
+                    }
+                    Discv5Event::SocketUpdated(_) => {
+                        debug!("local ENR IP address was updated");
+                    }
+                    Discv5Event::TunnelPacket(inbound_packet) => {
+                        debug!("a tunnel packet was received over the discovery network");
+                        // Forward all tunnel packets.
+                        let _ = tunnel_tx.send(inbound_packet).await;
+                    }
                 }
             }
         });
 
-        Ok(talk_req_rx)
+        Ok(DiscRecv {
+            talk_req_rx,
+            tunnel_rx,
+        })
     }
 
     /// Returns number of connected peers in the Discv5 routing table.
